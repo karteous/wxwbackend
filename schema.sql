@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS records (
 );
 
 CREATE INDEX IF NOT EXISTS idx_records_uid_status ON records(uid, status);
+-- 索引：优化记录列表按日期排序
+CREATE INDEX IF NOT EXISTS idx_records_uid_date ON records(uid, date DESC);
 CREATE INDEX IF NOT EXISTS idx_records_uid_contact ON records(uid, contactName);
 
 -- Contacts Table
@@ -32,3 +34,6 @@ CREATE TABLE IF NOT EXISTS contacts (
   lastUpdate TEXT DEFAULT (datetime('now', 'localtime')),
   UNIQUE(uid, name) -- 保持 uid 和 name 的组合唯一性
 );
+
+-- 索引：优化联系人列表排序
+CREATE INDEX IF NOT EXISTS idx_contacts_uid_update ON contacts(uid, lastUpdate DESC);

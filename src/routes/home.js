@@ -8,17 +8,20 @@ home.get('/stats', async (c) => {
   const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
   try {
-    // 1. 获取所有待处理记录
-    const { results: pendingRecords } = await c.env.DB.prepare('SELECT amount, repaidAmount, type, dueDate FROM records WHERE uid = ? AND status = "pending"').bind(uid).all();
-    
-    // 2. 获取累计金额
-    const totalStats = await c.env.DB.prepare(`
-      SELECT 
-        SUM(CASE WHEN type = 'lend' THEN amount ELSE 0 END) as totalLent,
-        SUM(CASE WHEN type = 'borrow' THEN amount ELSE 0 END) as totalBorrowed
-      FROM records 
-      WHERE uid = ?
-    `).bind(uid).first();
+    // 1 & 2. 并行获取所有待处理记录和累计金额
+    const [pendingRes, statsRes] = await Promise.all([
+      c.env.DB.prepare('SELECT amount, repaidAmount, type, dueDate FROM records WHERE uid = ? AND status = "pending"').bind(uid).all(),
+      c.env.DB.prepare(`
+        SELECT 
+          SUM(CASE WHEN type = 'lend' THEN amount ELSE 0 END) as totalLent,
+          SUM(CASE WHEN type = 'borrow' THEN amount ELSE 0 END) as totalBorrowed
+        FROM records 
+        WHERE uid = ?
+      `).bind(uid).first()
+    ]);
+
+    const pendingRecords = pendingRes.results || [];
+    const totalStats = statsRes || { totalLent: 0, totalBorrowed: 0 };
 
     let balanceLent = 0;
     let balanceBorrowed = 0;

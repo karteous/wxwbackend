@@ -39,9 +39,17 @@ records.get('/:id', async (c) => {
   const user = c.get('jwtPayload');
   const uid = user.openid;
   const id = c.req.param('id');
+  const isShared = c.req.query('shared') === 'true';
 
   try {
-    const record = await c.env.DB.prepare('SELECT id as _id, * FROM records WHERE id = ? AND uid = ?').bind(id, uid).first();
+    let record;
+    if (isShared) {
+      // 分享模式：不校验 UID，允许任何人通过 ID 查看（原 getSharedRecord 逻辑）
+      record = await c.env.DB.prepare('SELECT id as _id, * FROM records WHERE id = ?').bind(id).first();
+    } else {
+      // 普通模式：必须校验 UID
+      record = await c.env.DB.prepare('SELECT id as _id, * FROM records WHERE id = ? AND uid = ?').bind(id, uid).first();
+    }
     if (!record) return c.json({ success: false, error: 'Record not found' }, 404);
     return c.json({ success: true, data: record });
   } catch (err) {
@@ -94,12 +102,14 @@ records.post('/', async (c) => {
       }
     }
 
-    // 3. 更新联系人余额
+    // 3. 更新联系人余额和统计
+    const todayStr = new Date().toISOString().split('T')[0];
     const contact = await c.env.DB.prepare('SELECT * FROM contacts WHERE uid = ? AND name = ?').bind(uid, contactName).first();
+    
     if (!contact) {
       batchQueries.push(
-        c.env.DB.prepare('INSERT INTO contacts (uid, name, totalLent, totalBorrowed, countTimes) VALUES (?, ?, ?, ?, 1)')
-          .bind(uid, contactName, type === 'lend' ? amount : 0, type === 'borrow' ? amount : 0)
+        c.env.DB.prepare('INSERT INTO contacts (uid, name, totalLent, totalBorrowed, countTimes, countDefaults, lastUpdate) VALUES (?, ?, ?, ?, 1, ?, datetime("now", "localtime"))')
+          .bind(uid, contactName, type === 'lend' ? amount : 0, type === 'borrow' ? amount : 0, (type !== 'repay' && dueDate && dueDate < todayStr) ? 1 : 0)
       );
     } else {
       let totalLentInc = 0;
@@ -107,12 +117,21 @@ records.post('/', async (c) => {
       if (type === 'lend') totalLentInc = amount;
       if (type === 'borrow') totalBorrowedInc = amount;
       if (type === 'repay') {
-        if (repayDirection === 'someone_to_me') totalLentInc = -amount;
-        else totalBorrowedInc = -amount;
+        if (repayDirection === 'me_to_someone') totalBorrowedInc = -amount;
+        else totalLentInc = -amount;
       }
+
+      // 更新余额、次数，并重新计算逾期总数
       batchQueries.push(
-        c.env.DB.prepare('UPDATE contacts SET totalLent = totalLent + ?, totalBorrowed = totalBorrowed + ?, countTimes = countTimes + 1, lastUpdate = datetime("now", "localtime") WHERE uid = ? AND name = ?')
-          .bind(totalLentInc, totalBorrowedInc, uid, contactName)
+        c.env.DB.prepare(`
+          UPDATE contacts SET 
+            totalLent = totalLent + ?, 
+            totalBorrowed = totalBorrowed + ?, 
+            countTimes = countTimes + 1, 
+            lastUpdate = datetime("now", "localtime"),
+            countDefaults = (SELECT COUNT(*) FROM records WHERE uid = ? AND contactName = ? AND status = 'pending' AND dueDate < ?)
+          WHERE uid = ? AND name = ?
+        `).bind(totalLentInc, totalBorrowedInc, uid, contactName, todayStr, uid, contactName)
       );
     }
 
@@ -133,21 +152,27 @@ records.delete('/:id', async (c) => {
     const record = await c.env.DB.prepare('SELECT * FROM records WHERE id = ? AND uid = ?').bind(id, uid).first();
     if (!record) return c.json({ success: false, error: 'Record not found' }, 404);
 
+    const contactName = record.contactName;
+    const todayStr = new Date().toISOString().split('T')[0];
     const batchQueries = [];
     
     // 1. 删除记录
     batchQueries.push(c.env.DB.prepare('DELETE FROM records WHERE id = ? AND uid = ?').bind(id, uid));
 
-    // 2. 冲抵余额和还原状态
+    // 2. 处理余额回滚逻辑
     let totalLentInc = 0;
     let totalBorrowedInc = 0;
-    if (record.type === 'lend' && record.status === 'pending') totalLentInc = -record.amount;
-    if (record.type === 'borrow' && record.status === 'pending') totalBorrowedInc = -record.amount;
 
-    if (record.type === 'repay') {
+    if (record.type === 'lend') {
+      totalLentInc = -record.amount;
+    } else if (record.type === 'borrow') {
+      totalBorrowedInc = -record.amount;
+    } else if (record.type === 'repay') {
+      // 如果是还款记录被删，余额需要加回来
       if (record.repayDirection === 'someone_to_me') totalLentInc = record.amount;
       else totalBorrowedInc = record.amount;
 
+      // 同时更新原欠单的已还金额和状态
       if (record.relatedRecordId) {
         const originalRecord = await c.env.DB.prepare('SELECT * FROM records WHERE id = ? AND uid = ?').bind(record.relatedRecordId, uid).first();
         if (originalRecord) {
@@ -161,9 +186,17 @@ records.delete('/:id', async (c) => {
       }
     }
 
+    // 3. 更新联系人统计：余额变动，次数减一，并重新计算逾期总数
     batchQueries.push(
-      c.env.DB.prepare('UPDATE contacts SET totalLent = totalLent + ?, totalBorrowed = totalBorrowed + ?, countTimes = countTimes - 1, lastUpdate = datetime("now", "localtime") WHERE uid = ? AND name = ?')
-        .bind(totalLentInc, totalBorrowedInc, uid, record.contactName)
+      c.env.DB.prepare(`
+        UPDATE contacts SET 
+          totalLent = totalLent + ?, 
+          totalBorrowed = totalBorrowed + ?, 
+          countTimes = countTimes - 1, 
+          lastUpdate = datetime("now", "localtime"),
+          countDefaults = (SELECT COUNT(*) FROM records WHERE uid = ? AND contactName = ? AND status = 'pending' AND dueDate < ? AND id != ?)
+        WHERE uid = ? AND name = ?
+      `).bind(totalLentInc, totalBorrowedInc, uid, contactName, todayStr, id, uid, contactName)
     );
 
     await c.env.DB.batch(batchQueries);

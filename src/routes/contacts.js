@@ -7,8 +7,8 @@ contacts.get('/', async (c) => {
   const uid = user.openid;
 
   try {
-    // 使用 rowid 别名为 _id 以兼容前端，避免因缺少 id 列报错
-    const { results } = await c.env.DB.prepare('SELECT rowid as _id, * FROM contacts WHERE uid = ? ORDER BY lastUpdate DESC').bind(uid).all();
+    // 使用 rowid 别名为 _id 以兼容前端，增加 LIMIT 200 防止大数据量卡顿
+    const { results } = await c.env.DB.prepare('SELECT rowid as _id, * FROM contacts WHERE uid = ? ORDER BY lastUpdate DESC LIMIT 200').bind(uid).all();
     return c.json({ success: true, data: results });
   } catch (err) {
     console.error('getContacts Error:', err);
