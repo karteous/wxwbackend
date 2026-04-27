@@ -12,15 +12,30 @@ const app = new Hono();
 app.use('*', cors());
 
 // JWT Authentication Middleware
-// 对除了登录以外的所有 /api 路由进行 JWT 验证
 app.use('/api/*', async (c, next) => {
+  // 排除登录接口
   if (c.req.path === '/api/auth/login' || c.req.path === '/api/auth/login/') {
     return next();
   }
+
+  // 检查 JWT_SECRET 是否配置
+  const secret = c.env.JWT_SECRET;
+  if (!secret || secret === 'REPLACE_WITH_JWT_SECRET') {
+    return c.json({ 
+      success: false, 
+      error: '服务器配置错误：缺少 JWT_SECRET。请在 Cloudflare 或 GitHub Secrets 中配置该变量。' 
+    }, 500);
+  }
+
   const jwtMiddleware = jwt({
-    secret: c.env.JWT_SECRET,
+    secret: secret,
   });
-  return jwtMiddleware(c, next);
+  
+  try {
+    return await jwtMiddleware(c, next);
+  } catch (err) {
+    return c.json({ success: false, error: '无效的或已过期的令牌 (Invalid or expired token)' }, 401);
+  }
 });
 
 // Routes
