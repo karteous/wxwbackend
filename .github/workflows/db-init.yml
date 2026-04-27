@@ -1,0 +1,29 @@
+name: Init Database
+on:
+  workflow_dispatch: # 手动触发
+
+jobs:
+  init:
+    runs-on: ubuntu-latest
+    name: Initialize D1 Database
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Inject Database ID into wrangler.toml
+        run: |
+          sed -i "s/REPLACE_WITH_D1_ID/${{ secrets.D1 }}/g" wrangler.toml
+          
+      - name: Execute SQL
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: d1 execute wxw --remote --file=./schema.sql
