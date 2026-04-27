@@ -8,7 +8,8 @@ records.get('/', async (c) => {
   const { contactName, type, status } = c.req.query();
 
   try {
-    let sql = 'SELECT * FROM records WHERE uid = ?';
+    // 将 id 别名为 _id 以兼容前端
+    let sql = 'SELECT id as _id, * FROM records WHERE uid = ?';
     let params = [uid];
 
     if (contactName) {
@@ -40,7 +41,7 @@ records.get('/:id', async (c) => {
   const id = c.req.param('id');
 
   try {
-    const record = await c.env.DB.prepare('SELECT * FROM records WHERE id = ? AND uid = ?').bind(id, uid).first();
+    const record = await c.env.DB.prepare('SELECT id as _id, * FROM records WHERE id = ? AND uid = ?').bind(id, uid).first();
     if (!record) return c.json({ success: false, error: 'Record not found' }, 404);
     return c.json({ success: true, data: record });
   } catch (err) {
