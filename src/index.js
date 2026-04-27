@@ -23,12 +23,13 @@ app.use('/api/*', async (c, next) => {
   if (!secret || secret === 'REPLACE_WITH_JWT_SECRET') {
     return c.json({ 
       success: false, 
-      error: '服务器配置错误：缺少 JWT_SECRET。请在 Cloudflare 或 GitHub Secrets 中配置该变量。' 
+      error: '服务器配置错误：缺少 JWT_SECRET。请在 GitHub Secrets 中配置该变量。' 
     }, 500);
   }
 
   const jwtMiddleware = jwt({
     secret: secret,
+    alg: 'HS256' // 显式指定算法
   });
   
   try {

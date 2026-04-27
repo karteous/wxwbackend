@@ -30,7 +30,8 @@ auth.post('/login', async (c) => {
       openid,
       exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
     };
-    const token = await sign(payload, c.env.JWT_SECRET);
+    // 显式指定算法 HS256
+    const token = await sign(payload, c.env.JWT_SECRET, 'HS256');
 
     return c.json({
       success: true,
