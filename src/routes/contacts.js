@@ -7,8 +7,8 @@ contacts.get('/', async (c) => {
   const uid = user.openid;
 
   try {
-    // 将 id 别名为 _id 以兼容前端
-    const { results } = await c.env.DB.prepare('SELECT id as _id, * FROM contacts WHERE uid = ? ORDER BY lastUpdate DESC').bind(uid).all();
+    // 使用 rowid 别名为 _id 以兼容前端，避免因缺少 id 列报错
+    const { results } = await c.env.DB.prepare('SELECT rowid as _id, * FROM contacts WHERE uid = ? ORDER BY lastUpdate DESC').bind(uid).all();
     return c.json({ success: true, data: results });
   } catch (err) {
     console.error('getContacts Error:', err);
@@ -22,7 +22,7 @@ contacts.get('/:name', async (c) => {
   const name = c.req.param('name');
 
   try {
-    const contact = await c.env.DB.prepare('SELECT id as _id, * FROM contacts WHERE uid = ? AND name = ?').bind(uid, name).first();
+    const contact = await c.env.DB.prepare('SELECT rowid as _id, * FROM contacts WHERE uid = ? AND name = ?').bind(uid, name).first();
     if (!contact) return c.json({ success: false, error: 'Contact not found' }, 404);
     return c.json({ success: true, data: contact });
   } catch (err) {

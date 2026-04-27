@@ -22,6 +22,7 @@ CREATE INDEX IF NOT EXISTS idx_records_uid_contact ON records(uid, contactName);
 
 -- Contacts Table
 CREATE TABLE IF NOT EXISTS contacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, -- 增加自增 ID
   uid TEXT NOT NULL,
   name TEXT NOT NULL,
   totalLent REAL DEFAULT 0,
@@ -29,5 +30,5 @@ CREATE TABLE IF NOT EXISTS contacts (
   countTimes INTEGER DEFAULT 0,
   countDefaults INTEGER DEFAULT 0,
   lastUpdate TEXT DEFAULT (datetime('now', 'localtime')),
-  PRIMARY KEY (uid, name)
+  UNIQUE(uid, name) -- 保持 uid 和 name 的组合唯一性
 );
