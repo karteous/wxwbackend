@@ -1,0 +1,20 @@
+name = "wxwbackend"
+main = "src/index.js"
+compatibility_date = "2024-04-03"
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[vars]
+JWT_SECRET = "REPLACE_WITH_JWT_SECRET"
+WX_APPID = "REPLACE_WITH_WX_APPID"
+WX_APPSECRET = "REPLACE_WITH_WX_APPSECRET"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "wxw"
+database_id = "REPLACE_WITH_D1_ID"
